@@ -84,10 +84,12 @@ class Css2Clever(object):
                     yield grandchild, d
 
 
-    def __init__(self, css):
+    def __init__(self, css, tab='\t'):
         self.styles = Css2Clever.Node('', None)
         self.raw = css
         self.formats = {}
+        self.TAB = tab
+        self.NON_SQASHING_RULES = ['background']
         self.CSS_EXTENSIONS = [self._inline_block_extension,
                                self._css_fallbacks_extension]
         self._register_format('ccss', self.ccss)
@@ -105,7 +107,13 @@ class Css2Clever(object):
                 pseudo += parts
         node = self.get_or_create(pseudo)
         for rule, value in rules:
-            node.ruleset[rule] = value
+            if rule in self.NON_SQASHING_RULES:
+                values = node.ruleset.get(rule, [])
+                values.append(value)
+            else:
+                values = [value]
+            node.ruleset[rule] = values
+
 
     def _register_format(self, name, output):
         self.formats[name] = { 'output': output }
@@ -164,21 +172,23 @@ class Css2Clever(object):
                 prev = s
             ret += '%s {\n' % ' '.join(selector)
             for rule in d[1]:
-                ret += '\t%s: %s;\n' % (rule[0], rule[1]);
+                ret += '%s%s: %s;\n' % (self.TAB, rule[0], rule[1]);
             ret += '}\n'
         return ret
 
     def ccss(self):
         ret = ''
         for node, depth in self.styles.traverse():
-            tabs = ''.join(['\t' for x in xrange(depth)])
+            tabs = ''.join([self.TAB for x in xrange(depth)])
             ret += '%s%s:\n' % (tabs, node.id.startswith(':') and
                                 '&'+node.id or node.id)
-            for rdef, rval in sorted(node.ruleset.items(), key=lambda rule: rule[0]):
-                # [-][a-zA-Z] require backticking
-                if re.match('-[a-zA-Z]', rval):
-                    rval = '`%s`' % rval
-                ret += '%s\t%s: %s\n' % (tabs, rdef, rval)
+            for rdef, rval in sorted(node.ruleset.items(),
+                                     key=lambda rule: rule[0]):
+                for val in rval:
+                    # [-][a-zA-Z] require backticking
+                    if re.match('-[a-zA-Z]', val):
+                        val = '`%s`' % val
+                    ret += '%s%s%s: %s\n' % (tabs, self.TAB, rdef, val)
         return ret
 
 
@@ -189,13 +199,16 @@ if __name__ == '__main__':
     parser.add_argument('-f', '--format',
             default='ccss',
             help='Supported output formats: ccss (default), css.')
+    parser.add_argument('-i', '--indention-string',
+            default='\t',
+            help='String representing single tab')
     parser.add_argument('input',
             help='a css file to process')
 
     args = parser.parse_args()
     with open(args.input, "r") as f:
         css = f.read()
-        converter = Css2Clever(css)
+        converter = Css2Clever(css, tab=args.indention_string)
         converter.convert()
         print '/* Css2Clever by Mirumee Labs (http://mirumee/github) */'
         print '/* %d block(s) converted. */' % converter.original_selectors_counter
