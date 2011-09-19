@@ -45,17 +45,14 @@ class Css2Clever(object):
 
         def get_or_create(self, path, depth=0):
             id = path[0]
-            #print 'Trying to find %s' % id
             path = path[1:]
             for child in self.children:
                 if child.id == id:
-                    #print 'Node %s found in %s' % (child.id, self.id)
                     if len(path):
                         return child.get_or_create(path, depth+1)
                     else:
                         return child
             child = Css2Clever.Node(id, None, depth)
-            #print 'New leaf %s created in %s' % (child.id, self.id)
             self.children.append(child)
             self.children.sort(key=lambda child: child.id)
             if len(path):
@@ -77,7 +74,6 @@ class Css2Clever(object):
 
         def traverse(self, depth=0):
             children = sorted(self.children, key=lambda child: child.id)
-            # print 'Traversing %s at depth %s' % (self.id, depth)
             for child in children:
                 yield child, depth
                 for grandchild, d in child.traverse(depth=depth+1):
