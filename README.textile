@@ -1,0 +1,3 @@
+h1. Simple tool for turning CSS into Clever CSS format
+
+Usage: python css2clever.py -f ccss(default)|css input.css
