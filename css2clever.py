@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import argparse, re
 from pyparsing import (alphanums, OneOrMore, ZeroOrMore, Word, Group, Optional, 
                        cStyleComment)
@@ -40,7 +42,6 @@ class Css2Clever(object):
             self.depth = depth
             self.ruleset = ruleset or {}
             self.children = []
-            self.is_leaf = True
 
         def get_or_create(self, path, depth=0):
             id = path[0]
@@ -54,7 +55,6 @@ class Css2Clever(object):
                     else:
                         return child
             child = Css2Clever.Node(id, None, depth)
-            self.is_leaf = False
             #print 'New leaf %s created in %s' % (child.id, self.id)
             self.children.append(child)
             self.children.sort(key=lambda child: child.id)
@@ -70,7 +70,7 @@ class Css2Clever(object):
                 new_def = [(key, value) for key, value in 
                         sorted(self.ruleset.items(), key=lambda rule: rule[0])]
                 yield [path.split(' '), new_def]
-            for child in sorted(self.children, key=lambda x: x.is_leaf):
+            for child in self.children:
                 for p in child._get_next_path(path=not len(path)
                         and child.id or ("%s %s" % (path, child.id))):
                     yield p
