@@ -3,7 +3,7 @@
 import argparse, re
 from pyparsing import (alphanums, OneOrMore, ZeroOrMore, Word, Group, Optional,
                        cStyleComment, indentedBlock, delimitedList, Forward,
-                       LineEnd, ParseException)
+                       LineEnd)
 
 
 class Css2Clever(object):
@@ -42,20 +42,23 @@ class Css2Clever(object):
     #CleverCSS (CCSS) gramma
     indent_stack = [1]
     PROPERTY_NAME = Word(alphanums + '-*')
-    PROPERTY_VALUE = Word(alphanums + ' (\'/,%#-."\\)' )
+    PROPERTY_VALUE = Word(alphanums + ' (`\'/,%#-."\\)' )
     CCSS_PROPERTY = Group(PROPERTY_NAME +
                           Word(':').suppress() +
                           PROPERTY_VALUE +
                           LineEnd().suppress()
                     ).setResultsName('property')
+    CCSS_BREAKE = Optional(Word('&'))
     CCSS_SINGLE_CLASS = Word(alphanums + '.#_-')
     CCSS_SELECTOR = Group(OneOrMore(CCSS_SINGLE_CLASS))
-    CCSS_SELECTOR_GROUP = Group(delimitedList(CCSS_SELECTOR) +
+    CCSS_SELECTOR_GROUP = Group(Optional(Word(':')) +
+                                delimitedList(CCSS_SELECTOR) +
                                 Word(':').suppress() +
                                 LineEnd().suppress()
                           ).setResultsName('selectors')
     CCSS_DEF = Forward()
     CCSS_DEF << (Group(
+                    CCSS_BREAKE.suppress() +
                     CCSS_SELECTOR_GROUP +
                     indentedBlock(
                         OneOrMore(CCSS_PROPERTY).setResultsName('properties') |
@@ -124,11 +127,20 @@ class Css2Clever(object):
     def _process_ccss_block(self, block, depth=0, path=[]):
         selectors = block[0]
         content = block[1]
+        pseudo_separator = None
         # It needs to be evaluated against all paths in selectors list
         for s in selectors:
-            p = path + s.asList()
+            if isinstance(s, basestring):
+                pseudo_separator = s
+                continue
+            if pseudo_separator:
+                s = s.asList()
+                s[0] = pseudo_separator + s[0]
+                pseudo_separator = None
+            else:
+                s = s.asList()
+            p = path + s
             for c in content:
-                #if not isinstance(c, basestring):
                 if c.getName() == 'content':
                     for node in c:
                         self._process_ccss_block(node, depth=depth+1, path=p)
@@ -226,6 +238,7 @@ class Css2Clever(object):
                 x = s
                 if s.startswith(':'):
                     x = prev+s
+                    selector.pop()
                 selector.append(x)
                 prev = s
             ret += '%s {\n' % ' '.join(selector)
