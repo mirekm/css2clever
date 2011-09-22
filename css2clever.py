@@ -1,16 +1,19 @@
 #!/usr/bin/env python
 
 import argparse, re
-from pyparsing import (alphanums, OneOrMore, ZeroOrMore, Word, Group, Optional, 
-                       cStyleComment)
+from pyparsing import (alphanums, OneOrMore, ZeroOrMore, Word, Group, Optional,
+                       cStyleComment, indentedBlock, delimitedList, Forward,
+                       LineEnd, ParseException)
 
 
 class Css2Clever(object):
+    # CSS grammar
     SINGLE_SELECTOR = Word(alphanums + '.:#_-')
     SELECTOR = OneOrMore(
         SINGLE_SELECTOR
     )
     VALUE = Word(alphanums + ' (\'/,%#-."\\)' )
+    PROPERTY = Word(alphanums + '-*')
     SELECTOR_GROUP = Group(
         Group(SELECTOR) +
             ZeroOrMore(
@@ -25,7 +28,7 @@ class Css2Clever(object):
             Group(
                 ZeroOrMore(
                     Group(
-                        Word(alphanums + '-*') +
+                        PROPERTY +
                         Word(':').suppress() +
                         OneOrMore(
                             VALUE
@@ -35,6 +38,32 @@ class Css2Clever(object):
             Word('}').suppress()
         )
     ).ignore(cStyleComment)
+
+    #CleverCSS (CCSS) gramma
+    indent_stack = [1]
+    PROPERTY_NAME = Word(alphanums + '-*')
+    PROPERTY_VALUE = Word(alphanums + ' (\'/,%#-."\\)' )
+    CCSS_PROPERTY = Group(PROPERTY_NAME +
+                          Word(':').suppress() +
+                          PROPERTY_VALUE +
+                          LineEnd().suppress()
+                    ).setResultsName('property')
+    CCSS_SINGLE_CLASS = Word(alphanums + '.#_-')
+    CCSS_SELECTOR = Group(OneOrMore(CCSS_SINGLE_CLASS))
+    CCSS_SELECTOR_GROUP = Group(delimitedList(CCSS_SELECTOR) +
+                                Word(':').suppress() +
+                                LineEnd().suppress()
+                          ).setResultsName('selectors')
+    CCSS_DEF = Forward()
+    CCSS_DEF << (Group(
+                    CCSS_SELECTOR_GROUP +
+                    indentedBlock(
+                        OneOrMore(CCSS_PROPERTY).setResultsName('properties') |
+                        OneOrMore(CCSS_DEF)
+                    , indent_stack).setResultsName('nodes')
+                )).setResultsName('content')
+    CCSS = OneOrMore(CCSS_DEF).ignore(cStyleComment)
+
 
     class Node(object):
         def __init__(self, id, ruleset, depth=0):
@@ -84,14 +113,30 @@ class Css2Clever(object):
         self.styles = Css2Clever.Node('', None)
         self.raw = css
         self.formats = {}
+        self.original_selectors_counter = 0
         self.TAB = tab
-        self.NON_SQASHING_RULES = ['background']
+        self.NON_SQUASHING_RULES = ['background']
         self.CSS_EXTENSIONS = [self._inline_block_extension,
                                self._css_fallbacks_extension]
-        self._register_format('ccss', self.ccss)
-        self._register_format('css', self.css)
+        self._register_format('ccss', output=self.ccss, input=self.from_ccss)
+        self._register_format('css', output=self.css, input=self.from_css)
 
-    def _process_selector(self, selector, rules):
+    def _process_ccss_block(self, block, depth=0, path=[]):
+        selectors = block[0]
+        content = block[1]
+        # It needs to be evaluated against all paths in selectors list
+        for s in selectors:
+            p = path + s.asList()
+            for c in content:
+                #if not isinstance(c, basestring):
+                if c.getName() == 'content':
+                    for node in c:
+                        self._process_ccss_block(node, depth=depth+1, path=p)
+                else:
+                    if c.getName() == 'properties':
+                        self.get_or_create(p, c)
+
+    def _process_css_block(self, selector, properties):
         #print 'Processing %s' % selector
         self.original_selectors_counter += 1
         pseudo = []
@@ -101,18 +146,11 @@ class Css2Clever(object):
                 pseudo += (parts[0], ':'+parts[1])
             else:
                 pseudo += parts
-        node = self.get_or_create(pseudo)
-        for rule, value in rules:
-            if rule in self.NON_SQASHING_RULES:
-                values = node.ruleset.get(rule, [])
-                values.append(value)
-            else:
-                values = [value]
-            node.ruleset[rule] = values
+        self.get_or_create(pseudo, properties)
 
 
-    def _register_format(self, name, output):
-        self.formats[name] = { 'output': output }
+    def _register_format(self, name, output=None, input=None):
+        self.formats[name] = { 'output': output, 'input': input }
 
     def _apply_extensions(self):
         for node in self.styles.traverse():
@@ -139,21 +177,45 @@ class Css2Clever(object):
                     for f in fallback_mapping[i]:
                         node.ruleset[f] = value
 
-    def convert(self):
+    def get_or_create(self, path, properties=[]):
+        node = self.styles.get_or_create(path)
+        for rule, value in properties:
+            if rule in self.NON_SQUASHING_RULES:
+                values = node.ruleset.get(rule, [])
+                values.append(value)
+            else:
+                values = [value]
+            node.ruleset[rule] = values
+        return node
+
+    def from_ccss(self):
+        parsed = self.CCSS.parseString(self.raw)
+        for node in parsed:
+            self._process_ccss_block(node)
+        return self.styles
+
+    def from_css(self):
         parsed = self.CSS.parseString(self.raw)
         self.original_selectors_counter = 0
         for block in parsed:
             selector_group = block[0]
             for selector in selector_group:
-                self._process_selector(selector, block[1])
-        self._apply_extensions()
+                self._process_css_block(selector, block[1])
         return self.styles
 
-    def get_or_create(self, path):
-        return self.styles.get_or_create(path)
+    def convert(self, format):
+        f = self.formats.get(format, None)
+        convert = f.get('input', None)
+        if convert:
+            convert()
+            self._apply_extensions()
+            return self.styles
 
     def output(self, format='ccss'):
-        return self.formats[format]['output']()
+        f = self.formats.get(format, None)
+        output = f.get('output', None)
+        if output:
+            return output()
 
     def css(self):
         ret = ''
@@ -168,9 +230,11 @@ class Css2Clever(object):
                 prev = s
             ret += '%s {\n' % ' '.join(selector)
             for rule in d[1]:
-                ret += '%s%s: %s;\n' % (self.TAB, rule[0], rule[1]);
+                ret += '%s%s: %s;\n' % (self.TAB, rule[0], ' '.join(rule[1]));
             ret += '}\n'
-        return ret
+        return ('/* Css2Clever by Mirumee Labs (http://mirumee/github) */\n' +
+                 '/* %d block(s) converted. */\n%s'
+                 % (converter.original_selectors_counter, ret))
 
     def ccss(self):
         ret = ''
@@ -192,12 +256,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
             description='Convert CSS to CleverCSS (and correct/enhance it).',
             epilog='by Mirumee Labs http://mirumee.com/github')
-    parser.add_argument('-f', '--format',
+    parser.add_argument('-o', '--output-format',
             default='ccss',
             help='Supported output formats: ccss (default), css.')
-    parser.add_argument('-i', '--indention-string',
+    parser.add_argument('-t', '--indention-string',
             default='\t',
             help='String representing single tab')
+    parser.add_argument('-i', '--input-format',
+            default='css',
+            help='Supported input formats: css (default), ccss.')
     parser.add_argument('input',
             help='a css file to process')
 
@@ -205,7 +272,5 @@ if __name__ == '__main__':
     with open(args.input, "r") as f:
         css = f.read()
         converter = Css2Clever(css, tab=args.indention_string)
-        converter.convert()
-        print '/* Css2Clever by Mirumee Labs (http://mirumee/github) */'
-        print '/* %d block(s) converted. */' % converter.original_selectors_counter
-        print converter.output(args.format)
+        converter.convert(args.input_format)
+        print converter.output(args.output_format)
