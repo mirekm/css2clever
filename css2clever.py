@@ -48,7 +48,7 @@ class Css2Clever(object):
                           PROPERTY_VALUE +
                           LineEnd().suppress()
                     ).setResultsName('property')
-    CCSS_BREAKE = Optional(Word('&'))
+    CCSS_BREAK = Optional(Word('&'))
     CCSS_SINGLE_CLASS = Word(alphanums + '.#_-')
     CCSS_SELECTOR = Group(OneOrMore(CCSS_SINGLE_CLASS))
     CCSS_SELECTOR_GROUP = Group(Optional(Word(':')) +
@@ -58,7 +58,7 @@ class Css2Clever(object):
                           ).setResultsName('selectors')
     CCSS_DEF = Forward()
     CCSS_DEF << (Group(
-                    CCSS_BREAKE.suppress() +
+                    CCSS_BREAK.suppress() +
                     CCSS_SELECTOR_GROUP +
                     indentedBlock(
                         OneOrMore(CCSS_PROPERTY).setResultsName('properties') |
@@ -192,6 +192,7 @@ class Css2Clever(object):
     def get_or_create(self, path, properties=[]):
         node = self.styles.get_or_create(path)
         for rule, value in properties:
+            value = value.replace('`', '')
             if rule in self.NON_SQUASHING_RULES:
                 values = node.ruleset.get(rule, [])
                 values.append(value)
@@ -243,11 +244,11 @@ class Css2Clever(object):
                 prev = s
             ret += '%s {\n' % ' '.join(selector)
             for rule in d[1]:
-                ret += '%s%s: %s;\n' % (self.TAB, rule[0], ' '.join(rule[1]));
+                for val in rule[1]:
+                    ret += '%s%s: %s;\n' % (self.TAB, rule[0], val);
             ret += '}\n'
-        return ('/* Css2Clever by Mirumee Labs (http://mirumee/github) */\n' +
-                 '/* %d block(s) converted. */\n%s'
-                 % (converter.original_selectors_counter, ret))
+        return ('/* Css2Clever by Mirumee Labs (http://mirumee/github) */\n%s' %
+                 ret)
 
     def ccss(self):
         ret = ''
@@ -282,7 +283,7 @@ if __name__ == '__main__':
             help='a css file to process')
 
     args = parser.parse_args()
-    with open(args.input, "r") as f:
+    with open(args.input, 'r') as f:
         css = f.read()
         converter = Css2Clever(css, tab=args.indention_string)
         converter.convert(args.input_format)
