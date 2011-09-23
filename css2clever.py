@@ -8,38 +8,29 @@ from pyparsing import (alphanums, OneOrMore, ZeroOrMore, Word, Group, Optional,
 
 class Css2Clever(object):
     # CSS grammar
-    SINGLE_SELECTOR = Word(alphanums + '.:#_-')
-    SELECTOR = OneOrMore(
-        SINGLE_SELECTOR
-    )
-    VALUE = Word(alphanums + ' (\'/,%#-."\\)' )
-    PROPERTY = Word(alphanums + '-*')
-    SELECTOR_GROUP = Group(
-        Group(SELECTOR) +
-            ZeroOrMore(
-                Group(Word(',').suppress() +
-                SELECTOR)
-            )
+    CSS_SINGLE_CLASS = Word(alphanums + '.:#_-')
+    CSS_PROPERTY_VALUE = Word(alphanums + ' (\'/,%#-."\\)' )
+    CSS_PROPERTY_NAME = Word(alphanums + '-*')
+    CSS_PROPERTY = (CSS_PROPERTY_NAME +
+                    Word(':').suppress() +
+                    OneOrMore(CSS_PROPERTY_VALUE) + Optional(';').suppress())
+    CSS_SELECTOR = OneOrMore(CSS_SINGLE_CLASS)
+    CSS_SELECTOR_GROUP = Group(
+        Group(CSS_SELECTOR) +
+        ZeroOrMore(
+            Group(Word(',').suppress() + CSS_SELECTOR)
+        )
     )
     CSS = OneOrMore(
         Group(
-            SELECTOR_GROUP +
+            CSS_SELECTOR_GROUP +
             Word('{').suppress() +
-            Group(
-                ZeroOrMore(
-                    Group(
-                        PROPERTY +
-                        Word(':').suppress() +
-                        OneOrMore(
-                            VALUE
-                        ) +
-                        Optional(';').suppress())
-                )) +
+            Group(ZeroOrMore(Group(CSS_PROPERTY))) +
             Word('}').suppress()
         )
     ).ignore(cStyleComment)
 
-    #CleverCSS (CCSS) gramma
+    # CleverCSS (CCSS) grammar
     indent_stack = [1]
     PROPERTY_NAME = Word(alphanums + '-*')
     PROPERTY_VALUE = Word(alphanums + ' (`\'/,%#-."\\)' )
@@ -58,6 +49,7 @@ class Css2Clever(object):
                           ).setResultsName('selectors')
     CCSS_DEF = Forward()
     CCSS_DEF << (Group(
+                    Optional(LineEnd()).suppress() +
                     CCSS_BREAK.suppress() +
                     CCSS_SELECTOR_GROUP +
                     indentedBlock(
@@ -248,7 +240,7 @@ class Css2Clever(object):
                     ret += '%s%s: %s;\n' % (self.TAB, rule[0], val);
             ret += '}\n'
         return ('/* Css2Clever by Mirumee Labs (http://mirumee/github) */\n%s' %
-                 ret)
+                ret[:-1])
 
     def ccss(self):
         ret = ''
@@ -263,7 +255,7 @@ class Css2Clever(object):
                     if re.match('-[a-zA-Z]', val):
                         val = '`%s`' % val
                     ret += '%s%s%s: %s\n' % (tabs, self.TAB, rdef, val)
-        return ret
+        return ret[:-1]
 
 
 if __name__ == '__main__':
