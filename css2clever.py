@@ -7,58 +7,6 @@ from pyparsing import (alphanums, OneOrMore, ZeroOrMore, Word, Group, Optional,
 
 
 class Css2Clever(object):
-    # CSS grammar
-    CSS_SINGLE_CLASS = Word(alphanums + '.:#_-')
-    CSS_PROPERTY_VALUE = Word(alphanums + ' (\'/,%#-."\\)' )
-    CSS_PROPERTY_NAME = Word(alphanums + '-*')
-    CSS_PROPERTY = (CSS_PROPERTY_NAME +
-                    Word(':').suppress() +
-                    OneOrMore(CSS_PROPERTY_VALUE) + Optional(';').suppress())
-    CSS_SELECTOR = OneOrMore(CSS_SINGLE_CLASS)
-    CSS_SELECTOR_GROUP = Group(
-        Group(CSS_SELECTOR) +
-        ZeroOrMore(
-            Group(Word(',').suppress() + CSS_SELECTOR)
-        )
-    )
-    CSS = OneOrMore(
-        Group(
-            CSS_SELECTOR_GROUP +
-            Word('{').suppress() +
-            Group(ZeroOrMore(Group(CSS_PROPERTY))) +
-            Word('}').suppress()
-        )
-    ).ignore(cStyleComment)
-
-    # CleverCSS (CCSS) grammar
-    indent_stack = [1]
-    PROPERTY_NAME = Word(alphanums + '-*')
-    PROPERTY_VALUE = Word(alphanums + ' (`\'/,%#-."\\)' )
-    CCSS_PROPERTY = Group(PROPERTY_NAME +
-                          Word(':').suppress() +
-                          PROPERTY_VALUE +
-                          LineEnd().suppress()
-                    ).setResultsName('property')
-    CCSS_BREAK = Optional(Word('&'))
-    CCSS_SINGLE_CLASS = Word(alphanums + '.#_-')
-    CCSS_SELECTOR = Group(OneOrMore(CCSS_SINGLE_CLASS))
-    CCSS_SELECTOR_GROUP = Group(Optional(Word(':')) +
-                                delimitedList(CCSS_SELECTOR) +
-                                Word(':').suppress() +
-                                LineEnd().suppress()
-                          ).setResultsName('selectors')
-    CCSS_DEF = Forward()
-    CCSS_DEF << (Group(
-                    Optional(LineEnd()).suppress() +
-                    CCSS_BREAK.suppress() +
-                    CCSS_SELECTOR_GROUP +
-                    indentedBlock(
-                        OneOrMore(CCSS_PROPERTY).setResultsName('properties') |
-                        OneOrMore(CCSS_DEF)
-                    , indent_stack).setResultsName('nodes')
-                )).setResultsName('content')
-    CCSS = OneOrMore(CCSS_DEF).ignore(cStyleComment)
-
 
     class Node(object):
         def __init__(self, id, ruleset, depth=0):
@@ -181,6 +129,62 @@ class Css2Clever(object):
                     for f in fallback_mapping[i]:
                         node.ruleset[f] = value
 
+    def make_css_parser(self):
+        # CSS grammar
+        CSS_SINGLE_CLASS = Word(alphanums + '.:#_-')
+        CSS_PROPERTY_VALUE = Word(alphanums + ' (\'/,%#-."\\)' )
+        CSS_PROPERTY_NAME = Word(alphanums + '-*')
+        CSS_PROPERTY = (CSS_PROPERTY_NAME +
+                        Word(':').suppress() +
+                        OneOrMore(CSS_PROPERTY_VALUE) + Optional(';').suppress())
+        CSS_SELECTOR = OneOrMore(CSS_SINGLE_CLASS)
+        CSS_SELECTOR_GROUP = Group(
+            Group(CSS_SELECTOR) +
+            ZeroOrMore(
+                Group(Word(',').suppress() + CSS_SELECTOR)
+            )
+        )
+        CSS = OneOrMore(
+            Group(
+                CSS_SELECTOR_GROUP +
+                Word('{').suppress() +
+                Group(ZeroOrMore(Group(CSS_PROPERTY))) +
+                Word('}').suppress()
+            )
+        ).ignore(cStyleComment)
+        return CSS
+
+    def make_ccss_parser(self):
+        # CleverCSS (CCSS) grammar
+        indent_stack = [1]
+        PROPERTY_NAME = Word(alphanums + '-*')
+        PROPERTY_VALUE = Word(alphanums + ' (`\'/,%#-."\\)' )
+        CCSS_PROPERTY = Group(PROPERTY_NAME +
+                              Word(':').suppress() +
+                              PROPERTY_VALUE +
+                              LineEnd().suppress()
+                        ).setResultsName('property')
+        CCSS_BREAK = Optional(Word('&'))
+        CCSS_SINGLE_CLASS = Word(alphanums + '.#_-')
+        CCSS_SELECTOR = Group(OneOrMore(CCSS_SINGLE_CLASS))
+        CCSS_SELECTOR_GROUP = Group(Optional(Word(':')) +
+                                    delimitedList(CCSS_SELECTOR) +
+                                    Word(':').suppress() +
+                                    LineEnd().suppress()
+                              ).setResultsName('selectors')
+        CCSS_DEF = Forward()
+        CCSS_DEF << (Group(
+                        Optional(LineEnd()).suppress() +
+                        CCSS_BREAK.suppress() +
+                        CCSS_SELECTOR_GROUP +
+                        indentedBlock(
+                            OneOrMore(CCSS_PROPERTY).setResultsName('properties') |
+                            OneOrMore(CCSS_DEF)
+                        , indent_stack).setResultsName('nodes')
+                    )).setResultsName('content')
+        CCSS = OneOrMore(CCSS_DEF).ignore(cStyleComment)
+        return CCSS
+
     def get_or_create(self, path, properties=[]):
         node = self.styles.get_or_create(path)
         for rule, value in properties:
@@ -194,13 +198,13 @@ class Css2Clever(object):
         return node
 
     def from_ccss(self):
-        parsed = self.CCSS.parseString(self.raw)
+        parsed = self.make_ccss_parser().parseString(self.raw)
         for node in parsed:
             self._process_ccss_block(node)
         return self.styles
 
     def from_css(self):
-        parsed = self.CSS.parseString(self.raw)
+        parsed = self.make_css_parser().parseString(self.raw)
         self.original_selectors_counter = 0
         for block in parsed:
             selector_group = block[0]
