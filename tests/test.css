@@ -1,0 +1,39 @@
+#vCardContainer #vCard, #this .is #just a test {
+    color: #505050;
+    position: relative;
+    width: 348px;
+    background: #f4f4f4;
+    background: url(img/bg.png) 50% 0 x-repeat;
+    border: 1px solid #d9dfdf;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+}
+ /* It should replace the original rule or ad the new one */
+#vCardContainer #vCard {
+    position: absolute;/*Comments are ignored*/
+}
+#vCardContainer p {
+    font-size: 12px;
+    color: #222;
+}
+a {
+    color: #222
+}
+a:hover {
+    color: #FF0000
+}
+#vCardContainer #vCard ul .test,
+a .terror#from-the #deep span {
+    text-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
+}
+#vCardContainer #vCard ul:hover .test div h2 {
+    diplay: inline-block;
+    background: -moz-linear-gradient(top, blue, white);
+}
+body .test, #vCardContainer #vCard {
+    box-shadow: #DDD 1px 1px 1px;
+    display: inline-block;
+    *display: inline;
+}
+#this .is #just a test .of .backticking /* Supported only by CCSS 2 */{
+     background: -moz-linear-gradient(top, blue, white);
+}
