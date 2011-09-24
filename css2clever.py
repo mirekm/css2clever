@@ -38,10 +38,10 @@ class Css2Clever(object):
             if len(self.ruleset.items()):
                 new_def = [(key, value) for key, value in 
                         sorted(self.ruleset.items(), key=lambda rule: rule[0])]
-                yield [path.split(' '), new_def]
+                yield [path.split('|'), new_def]
             for child in self.children:
                 for p in child._get_next_path(path=not len(path)
-                        and child.id or ("%s %s" % (path, child.id))):
+                        and child.id or ("%s|%s" % (path, child.id))):
                     yield p
 
         def traverse(self, depth=0):
@@ -168,15 +168,6 @@ class Css2Clever(object):
 
     def make_ccss_parser(self):
         # CleverCSS (CCSS) grammar
-        def _process_class(string, location, tokens):
-            '''
-            Direct child and pseudo-selectors support
-            '''
-            tokens[0] = tokens[0].strip()
-
-
-        _process_class.is_direct = False;
-
         indent_stack = [1]
         PROPERTY_NAME = Word(alphanums + '-*')
         PROPERTY_VALUE = Word(alphanums + ' (`\'/,%#-."\\)' )
@@ -188,8 +179,9 @@ class Css2Clever(object):
         CCSS_BREAK = Word('&')
         CCSS_SINGLE_CLASS = Combine(
                                 Optional(
-                                    Combine(CCSS_BREAK.suppress() + Optional(White()) + Word('>')) |
-                                    (CCSS_BREAK.suppress() + Word(':'))
+                                    Combine(CCSS_BREAK + Optional(White()) + Word('>')) |
+                                    Combine(CCSS_BREAK + Optional(White()) + Word(':')) |
+                                    CCSS_BREAK
                                 ) + Optional(White()) +
                                 Word(alphanums + '.#_-*[]\'="')
                             ).setParseAction(_process_class)
@@ -257,11 +249,10 @@ class Css2Clever(object):
             selector = []
             prev = ''
             for s in d[0]:
-                x = s
-                if s.startswith(':'):
-                    x = prev+s
-                    selector.pop()
-                selector.append(x)
+                x = [s]
+                if s.startswith('&'):
+                    x = [prev+s[1:]]
+                selector += x
                 prev = s
             ret += '%s {\n' % ' '.join(selector)
             for rule in d[1]:
@@ -276,7 +267,7 @@ class Css2Clever(object):
         need_break = [':', '>']
         for node, depth in self.styles.traverse():
             tabs = ''.join([self.TAB for x in xrange(depth)])
-            ret += '%s%s:\n' % (tabs, (node.id.strip()[0] in need_break) and '&'+node.id or node.id)
+            ret += '%s%s:\n' % (tabs, (node.id[0] in need_break) and '&'+node.id or node.id)
             for rdef, rval in sorted(node.ruleset.items(),
                                      key=lambda rule: rule[0]):
                 for val in rval:
