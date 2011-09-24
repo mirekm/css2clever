@@ -3,7 +3,7 @@ h1. Simple tool handling conversion between CSS and CCSS (CleverCSS) formats
 Usage:
 ./css2clever.py [-f ccss(default)|css] [-i INDENTION_STRING] input.css
 
-ie.
+Examples:
 ./css2clever.py -f css -t '    ' input.css
 (outputs input.css as refactored CSS with 4 spaces as of single indention)
 
