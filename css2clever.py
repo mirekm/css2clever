@@ -3,7 +3,7 @@
 import argparse, re
 from pyparsing import (alphanums, OneOrMore, ZeroOrMore, Word, Group, Optional,
                        cStyleComment, indentedBlock, delimitedList, Forward,
-                       LineEnd)
+                       LineEnd, Combine, White)
 
 
 class Css2Clever(object):
@@ -90,15 +90,7 @@ class Css2Clever(object):
 
     def _process_css_block(self, selector, properties):
         #print 'Processing %s' % selector
-        self.original_selectors_counter += 1
-        pseudo = []
-        for s in selector:
-            parts = s.split(':')
-            if len(parts)>1:
-                pseudo += (parts[0], ':'+parts[1])
-            else:
-                pseudo += parts
-        self.get_or_create(pseudo, properties)
+        self.get_or_create(selector, properties)
 
 
     def _register_format(self, name, output=None, input=None):
@@ -131,7 +123,27 @@ class Css2Clever(object):
 
     def make_css_parser(self):
         # CSS grammar
-        CSS_SINGLE_CLASS = Word(alphanums + '.:#_-')
+        def _process_class(string, location, tokens):
+            '''
+            Direct child and pseudo-selectors support
+            '''
+            # Direct child
+            if tokens[0]=='>':
+                process_class.is_direct = True
+                tokens.pop()
+                return
+            if process_class.is_direct:
+                tokens[0] = '> %s' % tokens[0]
+                process_class.is_direct = False
+            # Pseudo-selectors
+            ret = tokens[0].split(':')
+            if len(ret)>1:
+                tokens[0] = ret[0]
+                tokens.insert(1, ':' + ret[1])
+
+        _process_class.is_direct = False;
+        classchars = alphanums + '.:#_-*[]\'=">'
+        CSS_SINGLE_CLASS = Word(classchars).setParseAction(_process_class)
         CSS_PROPERTY_VALUE = Word(alphanums + ' (\'/,%#-."\\)' )
         CSS_PROPERTY_NAME = Word(alphanums + '-*')
         CSS_PROPERTY = (CSS_PROPERTY_NAME +
@@ -156,6 +168,15 @@ class Css2Clever(object):
 
     def make_ccss_parser(self):
         # CleverCSS (CCSS) grammar
+        def _process_class(string, location, tokens):
+            '''
+            Direct child and pseudo-selectors support
+            '''
+            tokens[0] = tokens[0].strip()
+
+
+        _process_class.is_direct = False;
+
         indent_stack = [1]
         PROPERTY_NAME = Word(alphanums + '-*')
         PROPERTY_VALUE = Word(alphanums + ' (`\'/,%#-."\\)' )
@@ -164,18 +185,22 @@ class Css2Clever(object):
                               PROPERTY_VALUE +
                               LineEnd().suppress()
                         ).setResultsName('property')
-        CCSS_BREAK = Optional(Word('&'))
-        CCSS_SINGLE_CLASS = Word(alphanums + '.#_-')
+        CCSS_BREAK = Word('&')
+        CCSS_SINGLE_CLASS = Combine(
+                                Optional(
+                                    Combine(CCSS_BREAK.suppress() + Optional(White()) + Word('>')) |
+                                    (CCSS_BREAK.suppress() + Word(':'))
+                                ) + Optional(White()) +
+                                Word(alphanums + '.#_-*[]\'="')
+                            ).setParseAction(_process_class)
         CCSS_SELECTOR = Group(OneOrMore(CCSS_SINGLE_CLASS))
-        CCSS_SELECTOR_GROUP = Group(Optional(Word(':')) +
-                                    delimitedList(CCSS_SELECTOR) +
+        CCSS_SELECTOR_GROUP = Group(delimitedList(CCSS_SELECTOR) +
                                     Word(':').suppress() +
                                     LineEnd().suppress()
                               ).setResultsName('selectors')
         CCSS_DEF = Forward()
         CCSS_DEF << (Group(
                         Optional(LineEnd()).suppress() +
-                        CCSS_BREAK.suppress() +
                         CCSS_SELECTOR_GROUP +
                         indentedBlock(
                             OneOrMore(CCSS_PROPERTY).setResultsName('properties') |
@@ -248,10 +273,10 @@ class Css2Clever(object):
 
     def ccss(self):
         ret = ''
+        need_break = [':', '>']
         for node, depth in self.styles.traverse():
             tabs = ''.join([self.TAB for x in xrange(depth)])
-            ret += '%s%s:\n' % (tabs, node.id.startswith(':') and
-                                '&'+node.id or node.id)
+            ret += '%s%s:\n' % (tabs, (node.id.strip()[0] in need_break) and '&'+node.id or node.id)
             for rdef, rval in sorted(node.ruleset.items(),
                                      key=lambda rule: rule[0]):
                 for val in rval:
