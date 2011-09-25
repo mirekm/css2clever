@@ -168,23 +168,35 @@ class Css2Clever(object):
 
     def make_ccss_parser(self):
         # CleverCSS (CCSS) grammar
+        def _parse_name(string, location, tokens):
+            for t in tokens:
+                if t[-1] == ';':
+                    t.replace(';', '')
+        def _parse_property_value(string, location, tokens):
+            pass
+
         indent_stack = [1]
         PROPERTY_NAME = Word(alphanums + '-*')
-        PROPERTY_VALUE = Word(alphanums + ' (`\'/,%#-."\\)' )
+        PROPERTY_VALUE = Word(alphanums + ' (`\'/,%#-."\\);$_').setParseAction(_parse_name)
+        PROPERTY_LINE_END = ((Optional(Word(';')).suppress() + LineEnd()) |
+                            LineEnd().suppress())
         CCSS_PROPERTY = Group(PROPERTY_NAME +
-                              Word(':').suppress() +
-                              PROPERTY_VALUE +
-                              LineEnd().suppress()
+                            Word(':').suppress() +
+                            PROPERTY_VALUE.setParseAction(_parse_property_value) +
+                            PROPERTY_LINE_END
                         ).setResultsName('property')
         CCSS_BREAK = Word('&')
+        CCSS_CLASS_NAME = Word(alphanums + '.#_-*[]\'="')
         CCSS_SINGLE_CLASS = Combine(
                                 Optional(
                                     Combine(CCSS_BREAK + Optional(White()) + Word('>')) |
                                     Combine(CCSS_BREAK + Optional(White()) + Word(':')) |
                                     CCSS_BREAK
-                                ) + Optional(White()) +
-                                Word(alphanums + '.#_-*[]\'="')
-                            ).setParseAction(_process_class)
+                                ) +
+                                Optional(White()) +
+                                (CCSS_CLASS_NAME ^
+                                (CCSS_CLASS_NAME + Word(':') + CCSS_CLASS_NAME))
+                            )
         CCSS_SELECTOR = Group(OneOrMore(CCSS_SINGLE_CLASS))
         CCSS_SELECTOR_GROUP = Group(delimitedList(CCSS_SELECTOR) +
                                     Word(':').suppress() +
@@ -247,13 +259,11 @@ class Css2Clever(object):
         ret = ''
         for d in self.styles.paths():
             selector = []
-            prev = ''
             for s in d[0]:
                 x = [s]
                 if s.startswith('&'):
-                    x = [prev+s[1:]]
+                    x = [selector.pop()+s[1:]]
                 selector += x
-                prev = s
             ret += '%s {\n' % ' '.join(selector)
             for rule in d[1]:
                 for val in rule[1]:
