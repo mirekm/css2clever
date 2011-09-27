@@ -1,10 +1,10 @@
-h1. Simple tool for turning CSS into Clever CSS format
+h1. Simple tool handling conversion between CSS and CCSS (CleverCSS) formats
 
-Usage: 
+Usage:
 ./css2clever.py [-f ccss(default)|css] [-i INDENTION_STRING] input.css
 
 ie.
-./css2clever.py -f css -t '    ' input.css 
+./css2clever.py -f css -t '    ' input.css
 (outputs input.css as refactored CSS with 4 spaces as of single indention)
 
 ./css2clever.py input.css

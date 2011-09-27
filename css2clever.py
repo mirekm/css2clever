@@ -127,23 +127,21 @@ class Css2Clever(object):
             '''
             Direct child and pseudo-selectors support
             '''
-            # Direct child
-            if tokens[0]=='>':
-                process_class.is_direct = True
-                tokens.pop()
-                return
-            if process_class.is_direct:
-                tokens[0] = '> %s' % tokens[0]
-                process_class.is_direct = False
+            # Direct
+            if tokens[0].startswith('>'):
+                tokens[0] = '& %s' % tokens[0]
             # Pseudo-selectors
             ret = tokens[0].split(':')
             if len(ret)>1:
                 tokens[0] = ret[0]
-                tokens.insert(1, ':' + ret[1])
-
-        _process_class.is_direct = False;
-        classchars = alphanums + '.:#_-*[]\'=">'
-        CSS_SINGLE_CLASS = Word(classchars).setParseAction(_process_class)
+                tokens.insert(1, '&:' + ret[1])
+        classchars = alphanums + '.:#_-*[]\'="'
+        CSS_SINGLE_CLASS = (Word(classchars) |
+                            Combine(
+                                Word('>') +
+                                Optional(White()) +
+                                Word(classchars)).setName('direct')
+                            ).setParseAction(_process_class)
         CSS_PROPERTY_VALUE = Word(alphanums + ' (\'/,%#-."\\)' )
         CSS_PROPERTY_NAME = Word(alphanums + '-*')
         CSS_PROPERTY = (CSS_PROPERTY_NAME +
@@ -269,7 +267,7 @@ class Css2Clever(object):
                 for val in rule[1]:
                     ret += '%s%s: %s;\n' % (self.TAB, rule[0], val);
             ret += '}\n'
-        return ('/* Css2Clever by Mirumee Labs (http://mirumee/github) */\n%s' %
+        return ('/* Css2Clever by Mirumee Labs (http://mirumee.com) */\n%s' %
                 ret[:-1])
 
     def ccss(self):
